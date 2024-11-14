@@ -1288,81 +1288,290 @@ def scatter_AD_vs_kinematic_var(dataframes, dataset_tags, column_name, variable_
     return fig, ax  # Return the figure and axis
 
 
-
-
 #===============================
-#    C O N T O U R   P L O T 
+#     B O X     P L O T S
 #===============================
 
-def contour_AD_kinematic_var(dataframes, dataset_tag, column_name, variable_name, x_max=None, AD_score_limit=100, filter=None, ax=None):
+def BUGGY_plot_box_AD_score_vs_jet_mult(dataframes, dataset_tags, score_limit=10000, ylog=False):
     """
-    Simple contour plot of HLT AD scores vs a kinematic variable (column_name) for a specific dataset.
+    Create a box plot comparing AD score distributions across datasets for different jet multiplicities.
+    
+    Args:
+        dataframes: Dictionary of dataframes
+        dataset_tags: List of dataset tags
+        score_limit: Upper limit for y-axis (scores above this will be clipped)
+        ylog: If True, use logarithmic scale for y-axis
+    """
+    
+    # Define color palette
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
+              '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+    
+    # Prepare data
+    jet_mult_labels = ['1 jet', '2 jets', '3 jets', '4 jets', '5 jets', '6 jets']
+    positions = np.arange(1, len(jet_mult_labels) + 1)  # X-axis positions for each jet multiplicity
+    all_scores = {label: {tag: [] for tag in dataset_tags} for label in jet_mult_labels}  # Store scores per jet multiplicity and dataset
+    over_score_limit_percentages = {tag: [] for tag in dataset_tags}  # Store percentage of events above score_limit for each dataset
+    
+    # Loop through datasets and extract scores for each jet multiplicity
+    for tag in dataset_tags:
+        for mult in range(1, 7):  # For each multiplicity from 1 to 6
+            # Create a mask for the current multiplicity
+            jet_columns = [f'j{idx}pt' for idx in range(6)]  # j0pt, j1pt, ...
+            if mult == 1:
+                jet_multiplicity_mask = (dataframes[tag][jet_columns[0]] > 20) & (dataframes[tag][jet_columns[1]] <= 20)
+            else:
+                jet_multiplicity_mask = (dataframes[tag][jet_columns[:mult]] > 20).all(axis=1) & (dataframes[tag][jet_columns[mult]] <= 20)
+
+            # Store the filtered HLT AD scores for the given jet multiplicity
+            all_scores[f'{mult} jet'][tag] = dataframes[tag][jet_multiplicity_mask]['HLT_AD_scores'].values.tolist()
+        
+        # Store the percentage of events above the score limit for each dataset
+        over_score_limit_percentages[tag] = [
+            (np.array(all_scores[f'{mult} jet'][tag]) > score_limit).mean() * 100 for mult in range(1, 7)
+        ]
+    
+    # Create the plot
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # Prepare the box plots for each jet multiplicity
+    box_data = [all_scores[f'{mult} jet'].values() for mult in range(1, 7)]
+    box = ax.boxplot(box_data, positions=positions, widths=0.6, patch_artist=True, 
+                     medianprops={'color': 'black'}, showfliers=True, showcaps=False, showmeans=False)
+
+    # Customize the box plot colors and elements
+    for i, dataset_tag in enumerate(dataset_tags):
+        color = colors[i]
+        for patch in box['boxes']:
+            patch.set_facecolor(color)
+            patch.set_alpha(0.7)
+        for flier in box['fliers']:
+            flier.set(marker='o', color=color, alpha=0.5, zorder=10)
+    
+    # Customize plot appearance
+    ax.set_xticks(positions)
+    ax.set_xticklabels(jet_mult_labels, fontsize=14)
+    ax.set_xlabel('Jet Multiplicity ($p_T$ > 20 GeV)', fontsize=16)
+    ax.set_ylabel('HLT AD Scores', fontsize=16)
+    ax.set_title('Box Plot of HLT AD Scores vs. Jet Multiplicity', fontsize=18)
+    
+    if ylog:
+        ax.set_yscale('log')
+    
+    # Add percentage above score limit annotations
+    for i, tag in enumerate(dataset_tags):
+        for j, label in enumerate(jet_mult_labels):
+            percentage = over_score_limit_percentages[tag][j]
+            ax.text(positions[j] + (i - len(dataset_tags) / 2) * 0.1, score_limit * 1.05, 
+                    f'{percentage:.2f}%', ha='center', va='bottom', fontsize=10, color=colors[i])
+    
+    # Add grid and adjust y-limits for space at the top and bottom
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    ax.set_ylim(-score_limit * 0.02, score_limit * 1.15)  # Start slightly below 0 and leave space at the top
+
+    # Create custom legend with dataset tags
+    legend_handles = [plt.Line2D([0], [0], color=colors[i], lw=2, label=dataset_tags[i]) for i in range(len(dataset_tags))]
+    ax.legend(handles=legend_handles, loc='upper center', bbox_to_anchor=(0.5, 1.08), ncol=len(dataset_tags), frameon=False, fontsize=12)
+    
+    # Adjust layout
+    plt.tight_layout()
+    
+    # Show plot
+    plt.show()
+
+
+
+def NOT_SURE_plot_box_AD_score_vs_jet_mult(dataframes, dataset_tags, score_limit=10000, ylog=False):
+    """
+    Create a box plot comparing AD score distributions for jet multiplicities across specified datasets
 
     Args:
-        dataframes: Dictionary of datasets
-        dataset_tag: Dataset tag to select the relevant dataframe
-        column_name: Column in the dataframe representing a kinematic variable (x-axis)
-        variable_name: Name of the kinematic variable (used as x-axis label)
-        x_max: Optional maximum value for x-axis (limits the kinematic variable)
-        AD_score_limit: Optional limit for the AD score (limits the y-axis)
-        filter: Optional filter to apply to the dataframe (used for masking the data)
-        ax: Optional axis to plot on. If None, a new axis will be created.
+        dataframes: Dictionary of dataframes
+        dataset_tags: List of dataset tags to be plotted
+        score_limit: Upper limit for y-axis (scores above this will be clipped)
     """
 
-    # Get the relevant dataframe
-    df = dataframes[dataset_tag]
+    # Define a color palette
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
+              '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+    
+    # Prepare data for box plot
+    box_data = []
+    labels = []
+    over_score_limit_percentages = {tag: [] for tag in dataset_tags}
 
-    # Apply mask for AD score limit
-    mask = df['HLT_AD_scores'] <= AD_score_limit if AD_score_limit else np.ones(len(df), dtype=bool)
+    # Iterate over jet multiplicities from 1 to 6
+    for jet_mult in range(1, 7):
+        for tag in dataset_tags:
+            scores = dataframes[tag]['HLT_AD_scores']
+            mask = (dataframes[tag]['j0pt'] > 20) & (dataframes[tag].filter(regex=f'j[1-{jet_mult - 1}]pt').ge(20).all(axis=1)) & (dataframes[tag].filter(regex=f'j[{jet_mult}-5]pt').lt(20).all(axis=1))
+            valid_scores = scores[mask]
+            box_data.append(np.clip(valid_scores, 0, score_limit))
+            labels.append(f"{jet_mult} jet{'s' if jet_mult > 1 else ''}")
+            over_score_limit_percentages[tag].append((valid_scores > score_limit).mean() * 100)
+    
+    # Create box plot
+    plt.figure(figsize=(14, 8), dpi=150)
+    box_parts = plt.boxplot(box_data, patch_artist=True, notch=True, positions=range(1, 2 * len(labels) + 1, 2))
 
-    # Apply additional filter if provided
-    if filter is not None:
-        mask &= filter
+    # Customize box appearance with different colors
+    for patch, color in zip(box_parts['boxes'], colors * 6):
+        patch.set_facecolor(color)
+        patch.set_alpha(0.7)
 
-    # Extract the relevant data
-    x_data = df[column_name][mask]
-    y_data = df['HLT_AD_scores'][mask]
-    weights = df['weights'][mask]
+    # Add y-axis scale
+    if ylog:
+        plt.yscale('log')
+    
+    # Customize plot
+    plt.ylabel('HLT AD Scores')
+    plt.title('Distribution of HLT AD Scores vs Jet Multiplicity', y=1.05, fontsize=18)
+    plt.xticks(range(2, 2 * len(labels) + 2, 2), labels, rotation=0)
 
-    # Apply x_max limit if provided
-    if x_max is not None:
-        mask_x = x_data <= x_max
-        x_data = x_data[mask_x]
-        y_data = y_data[mask_x]
-        weights = weights[mask_x]
+    # Add percentage annotations above each box
+    for i, dataset_tag in enumerate(dataset_tags):
+        for j in range(6):
+            plt.text(2 * (j * len(dataset_tags) + i) + 2, score_limit * 1.05, 
+                     f'{over_score_limit_percentages[dataset_tag][j]:.2f}% > {score_limit}',
+                     ha='center', va='bottom',
+                     fontsize=10,
+                     color=colors[i % len(colors)])
 
-    # Create the plot
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(8, 8))
+    # Add legend
+    handles = [plt.Line2D([0], [0], color=color, lw=4) for color in colors[:len(dataset_tags)]]
+    plt.legend(handles, dataset_tags, loc='upper center', bbox_to_anchor=(0.5, 1.15), ncol=len(dataset_tags), fontsize=12)
 
-    # Set up a 2D histogram for contour plotting
-    counts, x_edges, y_edges = np.histogram2d(x_data, y_data, bins=100, weights=weights)
+    # Add grid for y-axis only
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    
+    # Adjust y-limits to add space at top and bottom
+    plt.ylim(-score_limit * 0.02, score_limit * 1.15)  # Start slightly below 0
 
-    # Create the contour plot
-    X, Y = np.meshgrid(x_edges[:-1], y_edges[:-1])
-    contour = ax.contourf(X, Y, counts.T, cmap='viridis')
-
-    # Add color bar
-    plt.colorbar(contour, ax=ax)
-
-    # Set plot limits
-    ax.set_xlim(0, x_max if x_max else x_data.max())
-    ax.set_ylim(0, AD_score_limit if AD_score_limit else y_data.max())
-
-    # Set labels and title
-    ax.set_xlabel(variable_name, fontsize=14)
-    ax.set_ylabel('HLT AD Scores', fontsize=14)
-
-    # Calculate total weight and format it
-    total_weight = weights.sum()
-    if total_weight > 1e6:
-        total_weight_str = f"{total_weight / 1e6:.2f} million"
-    else:
-        total_weight_str = f"{total_weight:.2e}"
-
-    # Set the plot title
-    title = f'{dataset_tag} ({total_weight_str} weighted events)'
-    ax.set_title(title, fontsize=16)
-
+    # Adjust layout to prevent label cutoff
     plt.tight_layout()
+    
     plt.show()
+
+
+
+def plot_box_AD_score_vs_jet_mult(dataframes, dataset_tags, score_limit=10000, ylog=False, display_percentages=False):
+   """
+   Create a box plot of AD scores versus jet multiplicity for the given datasets.
+
+
+   Args:
+       dataframes: Dictionary of dataframes
+       dataset_tags: List of dataset tags to include in the plot
+       score_limit: Upper limit for y-axis (scores above this will be clipped)
+       ylog: If True, use logarithmic scale for the y-axis       
+       display_percentages: If True, display percentages of events above the score limit
+
+   """
+  
+   # Define a color palette
+   colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+             '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+  
+   # Define the x-axis labels (jet multiplicity categories)
+   jet_mult_labels = ['1 jet', '2 jets', '3 jets', '4 jets', '5 jets', '6 jets']
+   n_mult_categories = len(jet_mult_labels)
+
+
+   # Prepare data for box plot
+   box_data = [[] for _ in range(n_mult_categories * len(dataset_tags))]
+   percentages_above_limit = []
+
+
+   # Iterate over dataset tags
+   for i, tag in enumerate(dataset_tags):
+       df = dataframes[tag]
+       scores = df['HLT_AD_scores']
+       weights = df['weights']
+      
+       # Determine the jet multiplicity for each event
+       jet_mult = np.sum([
+           (df[f'j{j}pt'] > 20).astype(int) for j in range(6)
+       ], axis=0)
+      
+       # Collect AD scores for each jet multiplicity category
+       for mult in range(1, n_mult_categories + 1):
+           mask = (jet_mult == mult)
+           ad_scores = scores[mask]
+           box_data[mult - 1 + i * n_mult_categories] = ad_scores.clip(0, score_limit)
+          
+           # Calculate the percentage of events above the score limit
+           perc_above_limit = (ad_scores > score_limit).mean() * 100
+           percentages_above_limit.append(perc_above_limit)
+
+
+   # Create box plot
+   fig, ax = plt.subplots(figsize=(14, 8), dpi=150)
+   positions = np.arange(1, n_mult_categories + 1)  # x-axis positions for jet multiplicity
+   width = 0.3  # Width for each dataset's box
+  
+   # Plot each dataset's box plot with a shift in position
+   for i, tag in enumerate(dataset_tags):
+       offset = (i - len(dataset_tags) / 2) * width
+       dataset_positions = positions + offset
+       color = colors[i % len(colors)]
+      
+       # Custom properties for the box plot elements
+       boxprops = dict(facecolor=color, color=color, alpha=0.7)
+       whiskerprops = dict(color=color)
+       capprops = dict(color=color)
+       medianprops = dict(color='white')
+       flierprops = dict(marker='o', markerfacecolor=color, markeredgecolor=color, markersize=5, alpha=0.5)
+
+
+       # Plot the box plot for the current dataset
+       ax.boxplot(
+           box_data[i * n_mult_categories:(i + 1) * n_mult_categories],
+           positions=dataset_positions,
+           widths=width,
+           patch_artist=True,
+           boxprops=boxprops,
+           whiskerprops=whiskerprops,
+           capprops=capprops,
+           medianprops=medianprops,
+           flierprops=flierprops
+       )
+      
+       # Annotate percentage of events above the score limit
+       if display_percentages:  # Check if percentages should be displayed
+           for j, perc_above_limit in enumerate(percentages_above_limit[i * n_mult_categories:(i + 1) * n_mult_categories]):
+               ax.text(dataset_positions[j], score_limit * 1.05,
+                       f'{perc_above_limit:.2f}% > {score_limit}',
+                       ha='center', va='bottom', fontsize=12, color=color, rotation=90)
+
+
+   # Customize plot
+   if ylog:
+       ax.set_yscale('log')
+   ax.set_xticks(positions)
+   ax.set_xticklabels(jet_mult_labels, fontsize=14)
+   ax.set_xlabel('Jet Multiplicity ($p_T$ > 20 GeV)', fontsize=16, labelpad=20)
+   ax.set_ylabel('HLT AD Scores', fontsize=16)
+   ax.set_title('Box Plot of HLT AD Scores vs. Jet Multiplicity', fontsize=18, pad=50)
+
+
+  
+   # Add grid and legend
+   ax.grid(axis='y', linestyle='--', alpha=0.7)
+   legend_handles = [
+       plt.Line2D([0], [0], color=colors[i], lw=2, label=tag) for i, tag in enumerate(dataset_tags)
+   ]
+   ax.legend(handles=legend_handles, loc='upper center', bbox_to_anchor=(0.5, 1.08),
+             ncol=len(dataset_tags), frameon=False, fontsize=12)
+
+
+   # Adjust y-limits to add space at the top
+   if ylog:
+       ax.set_ylim(-score_limit * 0.02, score_limit * 100)
+   else:
+       ax.set_ylim(-score_limit * 0.02, score_limit * 1.4)
+
+
+   plt.tight_layout()
+   plt.show()
+
+
