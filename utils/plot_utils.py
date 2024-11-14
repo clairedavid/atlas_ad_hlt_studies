@@ -6,12 +6,12 @@ from matplotlib.lines import Line2D
 # Set plotting style at module level
 plt.rcParams.update({
     # Font sizes
-    'font.size': 16,
-    'axes.labelsize': 16,
-    'axes.titlesize': 16,
-    'xtick.labelsize': 14,
-    'ytick.labelsize': 14,
-    'legend.fontsize': 14,
+    'font.size': 18,
+    'axes.labelsize': 18,
+    'axes.titlesize': 18,
+    'xtick.labelsize': 16,
+    'ytick.labelsize': 16,
+    'legend.fontsize': 16,
     'legend.frameon': False,  # No box around legend
     'axes.grid': False, 
     # Tick settings
@@ -632,9 +632,9 @@ def DEPRECATED_overlay_variable_by_AD_range(dataframes, dataset_tags, column_nam
 
 
 
-def overlay_variable_by_AD_range(dataframes, dataset_tags, column_name, variable_name, 
+def overlay_kin_variable_2_AD_ranges(dataframes, dataset_tags, column_name, variable_name, 
                                range_AD_normal, range_AD_anomalous, 
-                               remove_zero_entries=False, nbins=50, x_max=None, y_max_factor=None):
+                               remove_zero_entries=False, nbins=50, x_max=None, y_max_factor=None, ylog=False):
     """
     Plot overlaid distributions for a variable, comparing low/high AD score ranges
     
@@ -649,6 +649,7 @@ def overlay_variable_by_AD_range(dataframes, dataset_tags, column_name, variable
         nbins: Number of bins for histogram
         x_max: Maximum value for x-axis (if None, use data range)
         y_max_factor: Scaling coefficient for the maximum value for y-axis (beautifying plot with no cutting legend)
+        ylog: If True, use logarithmic scale for y-axis
     """
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
               '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
@@ -657,7 +658,7 @@ def overlay_variable_by_AD_range(dataframes, dataset_tags, column_name, variable
     if 'phi' in variable_name.lower() or 'eta' in variable_name.lower():
         plt.figure(figsize=(8, 8))  # Square for angular variables
     else:
-        plt.figure(figsize=(12, 8))  # Rectangle for other variables
+        plt.figure(figsize=(10, 8))  # Rectangle for other variables
     
     # Order datasets
     datasets = []
@@ -686,6 +687,7 @@ def overlay_variable_by_AD_range(dataframes, dataset_tags, column_name, variable
                 xmax_val = max(xmax_val, df[column_name].max())
             bins = np.linspace(0, xmax_val, nbins+1)
     
+    """
     ############## not working yet 
     # Set y axis limits 
     if y_max_factor is not None:
@@ -697,6 +699,10 @@ def overlay_variable_by_AD_range(dataframes, dataset_tags, column_name, variable
             print(f"ymax_val for {tag}: {ymax_val}")  
         plt.ylim(0, y_max_factor * ymax_val)
     #############
+    """
+    
+    if ylog:
+        plt.yscale('log')
 
 
     # Then handle zero removal if requested
@@ -802,3 +808,215 @@ def overlay_variable_by_AD_range(dataframes, dataset_tags, column_name, variable
     plt.tight_layout()
     plt.show()
 
+def overlay_kin_variable_2_AD_ranges_errors(dataframes, dataset_tags, column_name, variable_name, 
+                               range_AD_normal, range_AD_anomalous, 
+                               remove_zero_entries=False, # not used
+                               nbins=50, 
+                               x_max=None, 
+                               y_max_factor=None, ylog=False, 
+                               ax=None):
+    """
+    Plot overlaid distributions for a variable, comparing low/high AD score ranges + stat errors
+    
+    Args:
+        dataframes: Dictionary of dataframes
+        dataset_tags: List of dataset tags (EB_test should be first)
+        column_name: Name of column to plot
+        variable_name: Label for x-axis
+        range_AD_normal: Tuple of (min, max) for normal AD scores
+        range_AD_anomalous: Tuple of (min, max) for anomalous AD scores
+        remove_zero_entries: If True, exclude events where variable is > zero (for pT) or within epsilon (for eta/phi)
+        nbins: Number of bins for histogram
+        x_max: Maximum value for x-axis (if None, use data range)
+        y_max_factor: Scaling coefficient for the maximum value for y-axis (beautifying plot with no cutting legend)
+        ylog: If True, use logarithmic scale for y-axis
+    """
+
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
+              '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+    
+    # Adjust figure size based on variable type
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(12, 8))  # Create a new figure if ax is not provided
+    else:
+        # Change the figure size based on the variable name
+        if 'phi' in variable_name.lower() or 'eta' in variable_name.lower():
+            ax.figure.set_size_inches(8, 8)
+        #else:
+        #    ax.figure.set_size_inches(12, 8)
+    
+    # Order datasets
+    datasets = []
+    if 'EB_test' in dataset_tags:
+        datasets.append('EB_test')
+    for dataset_tag in dataset_tags:
+        if dataset_tag != 'EB_test':
+            datasets.append(dataset_tag)
+            
+    # Set x axis limits and bins
+    is_eta = 'eta' in variable_name.lower()
+    is_phi = 'phi' in variable_name.lower()
+
+    if is_eta:
+        bins = np.linspace(-3.8, 3.8, nbins+1)
+    elif is_phi:
+        bins = np.linspace(-4.5, 4.5, nbins+1)
+    else:  # pt variable
+        if x_max is not None:
+            bins = np.linspace(0, x_max, nbins+1)
+        else:
+            xmax_val = 0
+            for tag in datasets:
+                df = dataframes[tag]
+                xmax_val = max(xmax_val, df[column_name].max())
+            bins = np.linspace(0, xmax_val, nbins+1)
+    
+    if ylog:
+        ax.yscale('log')
+
+    """
+    # NOT GOOD: SUPPRESS DATA! And handled by mask later anyway
+    # Handle zero removal if requested
+    if remove_zero_entries:
+        for tag in datasets:
+            if is_eta or is_phi:
+                dataframes[tag] = dataframes[tag][dataframes[tag][column_name] != 0]
+            else:
+                dataframes[tag] = dataframes[tag][dataframes[tag][column_name] > 0]
+    """
+
+    # Create two separate legend handles
+    normal_lines = []
+    normal_labels = []
+    anomalous_lines = []
+    anomalous_labels = []
+    
+    # Plot for each dataset
+    for idx, tag in enumerate(datasets):
+        df = dataframes[tag]
+        color = colors[idx]
+
+        #=================================================
+        # Process low AD scores (dashed lines)
+        #=================================================
+        mask_low = (df['HLT_AD_scores'] >= range_AD_normal[0]) & (df['HLT_AD_scores'] <= range_AD_normal[1])
+        if remove_zero_entries:
+            if is_eta or is_phi:
+                epsilon = 1e-6
+                mask_low &= (np.abs(df[column_name]) > epsilon)
+            else:
+                mask_low &= (df[column_name] > 0)
+        data_low = df[mask_low][column_name]
+        weights_low = df[mask_low]['weights']
+        
+        #weights_low_norm = weights_low / weights_low.sum() if len(weights_low) > 0 else weights_low
+        
+        
+        # Calculate histogram and errors for low AD scores
+        #hist_low, bin_edges = np.histogram(data_low, bins=bins, weights=weights_low_norm)
+        #hist_low_err = np.sqrt(np.histogram(data_low, bins=bins, weights=weights_low_norm**2)[0])
+        #bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+
+        # Compute histogram and errors using raw weights
+        hist_low, bin_edges = np.histogram(data_low, bins=bins, weights=weights_low)
+        hist_low_err = np.sqrt(np.histogram(data_low, bins=bins, weights=weights_low**2)[0])
+
+        # Normalize the histogram and errors
+        norm_factor_low = hist_low.sum()
+        if norm_factor_low > 0:
+            hist_low /= norm_factor_low
+            hist_low_err /= norm_factor_low
+        
+        # Plot histogram with step style
+        line_low = ax.hist(data_low, bins=bins, weights=weights_low / norm_factor_low,
+                          histtype='step', linestyle='--',
+                          color=color, linewidth=1.5 if tag=='EB_test' else 1,
+                          label=f'{tag} ({range_AD_normal[0]}-{range_AD_normal[1]})')
+        
+        # Add error band
+        ax.fill_between(bin_edges[:-1], hist_low - hist_low_err, hist_low + hist_low_err,
+                        alpha=0.15, color=color, step='post')
+        
+        normal_lines.append(line_low)
+        normal_labels.append(tag)
+        
+        #=================================================
+        # Process high AD scores (solid lines)
+        #=================================================
+        mask_high = (df['HLT_AD_scores'] >= range_AD_anomalous[0]) & (df['HLT_AD_scores'] <= range_AD_anomalous[1])
+        if remove_zero_entries:           
+            if is_eta or is_phi:
+                epsilon = 1e-6
+                mask_high &= (np.abs(df[column_name]) > epsilon)
+            else:
+                mask_high &= (df[column_name] > 0)
+        data_high = df[mask_high][column_name]
+        weights_high = df[mask_high]['weights']
+        #weights_high_norm = weights_high / weights_high.sum() if len(weights_high) > 0 else weights_high
+        
+        # Calculate histogram and errors for high AD scores
+        #hist_high, _ = np.histogram(data_high, bins=bins, weights=weights_high_norm)
+        #hist_high_err = np.sqrt(np.histogram(data_high, bins=bins, weights=weights_high_norm**2)[0])
+        
+        # Compute histogram and errors using raw weights
+        hist_high, bin_edges = np.histogram(data_high, bins=bins, weights=weights_high)
+        hist_high_err = np.sqrt(np.histogram(data_high, bins=bins, weights=weights_high**2)[0])
+
+        # Normalize the histogram and errors
+        norm_factor_high = hist_high.sum()
+        if norm_factor_high > 0:
+            hist_high /= norm_factor_high
+            hist_high_err /= norm_factor_high
+
+        # Plot histogram with step style
+        line_high = ax.hist(data_high, bins=bins, weights=weights_high / norm_factor_high,
+                           histtype='step', linestyle='-',
+                           color=color, linewidth=1.5 if tag=='EB_test' else 1,
+                           label=f'{tag} (>{range_AD_anomalous[0]})')
+        
+        # Add error band
+        ax.fill_between(bin_edges[:-1], hist_high - hist_high_err, hist_high + hist_high_err,
+                        alpha=0.15, color=color, step='post')
+        
+        anomalous_lines.append(line_high)
+        anomalous_labels.append(tag)
+    
+    # Title plot & axes
+    object_name = variable_name.replace(" [GeV]", "")
+    ax.set_title(f'Distribution of {object_name} for low vs high AD scores', fontsize=22)
+    ax.set_xlabel(variable_name)
+    ax.set_ylabel('Normalized Events')
+    
+    if x_max is not None:
+        ax.set_xlim(0, x_max)
+    
+    # Create custom legend with lines
+    normal_lines = [Line2D([0], [0], color=colors[i], 
+                          linestyle='--',
+                          lw=1.5 if datasets[i]=='EB_test' else 1) 
+                   for i in range(len(datasets))]
+    
+    anomalous_lines = [Line2D([0], [0], color=colors[i], 
+                             linestyle='-',
+                             lw=1.5 if datasets[i]=='EB_test' else 1) 
+                      for i in range(len(datasets))]
+    
+    # Add first legend at the top right
+    first_legend = ax.legend(normal_lines, normal_labels,
+                            title=f'Events with AD scores: {range_AD_normal[0]} - {range_AD_normal[1]}',
+                            loc='upper right',
+                            frameon=False,
+                            bbox_to_anchor=(0.95, 0.95))
+    ax.add_artist(first_legend)
+    
+    # Add second legend below the first one
+    ax.legend(anomalous_lines, anomalous_labels,
+              title=f'Events with AD scores > {range_AD_anomalous[0]}',
+              loc='upper right',
+              frameon=False,
+              bbox_to_anchor=(0.95, 0.7))
+
+    ax.ticklabel_format(axis='y', style='sci', scilimits=(-2,3))
+    fig = ax.figure  # Get the figure from the axes
+    plt.tight_layout()  # Call tight_layout on the figure    ax.show()
+    return fig, ax  # Return the figure and axis

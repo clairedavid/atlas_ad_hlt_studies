@@ -185,8 +185,9 @@ def get_manual_MET(df, event_idx, debug=False):
     measured_met_phi = df.loc[event_idx, 'METphi']
     
     # Print comparison
-    print(f"\nMET Comparison for Event {event_idx}:")
-    print(f"{'':4}Manual MET:   pT = {manual_met_pt:.1f} GeV, φ = {manual_met_phi:.3f}")
-    print(f"{'':4}Measured MET: pT = {measured_met_pt:.1f} GeV, φ = {measured_met_phi:.3f}")
+    print(f"\nMET Comparison for Event {event_idx}:\n")
+    print(f"{'':4}Measured MET: pT = {measured_met_pt:.1f} GeV,\tφ = {measured_met_phi:.3f}")
+    print(f"{'':4}Manual MET:   pT = {manual_met_pt:.1f} GeV,\tφ = {manual_met_phi:.3f}")
+    print("\n\n")
     
     return manual_met_pt, manual_met_phi
