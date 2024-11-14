@@ -491,7 +491,10 @@ def plot_AD_scores_violin(dataframes, score_limit=1000, ylog=False):
                 color=colors[i-1])  # Match text color to violin color
     
     # Adjust y-limits to add space at top and bottom
-    plt.ylim(-score_limit * 0.02, score_limit * 1.15)  # Start slightly below 0
+    if ylog:
+        plt.ylim(0.01, score_limit * 10) 
+    else:
+        plt.ylim(-score_limit * 0.02, score_limit * 1.15)  # Start slightly below 0
     
     # Adjust layout to prevent label cutoff
     plt.tight_layout()
@@ -1074,12 +1077,13 @@ def overlay_kin_variable_2_AD_ranges_errors_HLT(dataframes, dataset_tag, column_
             mask_low &= (df[column_name] > 0)
 
     # Pass HLT
-    data_low_pass = df[mask_low][df['passHLT'] == True][column_name]
-    weights_low_pass = df[mask_low][df['passHLT'] == True]['weights']
+    #data_low_pass = df[mask_low][df['passHLT'] == True][column_name]
+    data_low_pass    = df[mask_low & (df['passHLT'] == True)][column_name]
+    weights_low_pass = df[mask_low & (df['passHLT'] == True)]['weights']
 
     # Not Pass HLT
-    data_low_not_pass = df[mask_low][df['passHLT'] == False][column_name]
-    weights_low_not_pass = df[mask_low][df['passHLT'] == False]['weights']
+    data_low_not_pass    = df[mask_low & (df['passHLT'] == False)][column_name]
+    weights_low_not_pass = df[mask_low & (df['passHLT'] == False)]['weights']
 
     # Compute histogram and errors using raw weights for Pass HLT
     hist_low_pass, bin_edges = np.histogram(data_low_pass, bins=bins, weights=weights_low_pass)
@@ -1128,12 +1132,12 @@ def overlay_kin_variable_2_AD_ranges_errors_HLT(dataframes, dataset_tag, column_
             mask_high &= (df[column_name] > 0)
 
     # Pass HLT
-    data_high_pass = df[mask_high][df['passHLT'] == True][column_name]
-    weights_high_pass = df[mask_high][df['passHLT'] == True]['weights']
+    data_high_pass    = df[mask_high & (df['passHLT'] == True)][column_name]
+    weights_high_pass = df[mask_high & (df['passHLT'] == True)]['weights']
 
     # Not Pass HLT
-    data_high_not_pass = df[mask_high][df['passHLT'] == False][column_name]
-    weights_high_not_pass = df[mask_high][df['passHLT'] == False]['weights']
+    data_high_not_pass    = df[mask_high & (df['passHLT'] == False)][column_name]
+    weights_high_not_pass = df[mask_high & (df['passHLT'] == False)]['weights']
 
     # Compute histogram and errors using raw weights for Pass HLT
     hist_high_pass, bin_edges = np.histogram(data_high_pass, bins=bins, weights=weights_high_pass)
