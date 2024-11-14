@@ -908,14 +908,6 @@ def overlay_kin_variable_2_AD_ranges_errors(dataframes, dataset_tags, column_nam
                 mask_low &= (df[column_name] > 0)
         data_low = df[mask_low][column_name]
         weights_low = df[mask_low]['weights']
-        
-        #weights_low_norm = weights_low / weights_low.sum() if len(weights_low) > 0 else weights_low
-        
-        
-        # Calculate histogram and errors for low AD scores
-        #hist_low, bin_edges = np.histogram(data_low, bins=bins, weights=weights_low_norm)
-        #hist_low_err = np.sqrt(np.histogram(data_low, bins=bins, weights=weights_low_norm**2)[0])
-        #bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
 
         # Compute histogram and errors using raw weights
         hist_low, bin_edges = np.histogram(data_low, bins=bins, weights=weights_low)
@@ -952,11 +944,6 @@ def overlay_kin_variable_2_AD_ranges_errors(dataframes, dataset_tags, column_nam
                 mask_high &= (df[column_name] > 0)
         data_high = df[mask_high][column_name]
         weights_high = df[mask_high]['weights']
-        #weights_high_norm = weights_high / weights_high.sum() if len(weights_high) > 0 else weights_high
-        
-        # Calculate histogram and errors for high AD scores
-        #hist_high, _ = np.histogram(data_high, bins=bins, weights=weights_high_norm)
-        #hist_high_err = np.sqrt(np.histogram(data_high, bins=bins, weights=weights_high_norm**2)[0])
         
         # Compute histogram and errors using raw weights
         hist_high, bin_edges = np.histogram(data_high, bins=bins, weights=weights_high)
@@ -1020,3 +1007,362 @@ def overlay_kin_variable_2_AD_ranges_errors(dataframes, dataset_tags, column_nam
     fig = ax.figure  # Get the figure from the axes
     plt.tight_layout()  # Call tight_layout on the figure    ax.show()
     return fig, ax  # Return the figure and axis
+
+def overlay_kin_variable_2_AD_ranges_errors_HLT(dataframes, dataset_tag, column_name, variable_name, 
+                               range_AD_normal, range_AD_anomalous, 
+                               remove_zero_entries=False, 
+                               nbins=50, 
+                               x_max=None, 
+                               y_max_factor=None, ylog=False, 
+                               ax=None):
+    """
+    Plot overlaid distributions for a variable, comparing low/high AD score ranges + stat errors for a single dataset.
+    
+    Args:
+        dataframes: Dictionary of dataframes
+        dataset_tag: String identifying which dataset to plot
+        column_name: Name of column to plot
+        variable_name: Label for x-axis
+        range_AD_normal: Tuple of (min, max) for normal AD scores
+        range_AD_anomalous: Tuple of (min, max) for anomalous AD scores
+        remove_zero_entries: If True, exclude events where variable is > zero (for pT) or within epsilon (for eta/phi)
+        nbins: Number of bins for histogram
+        x_max: Maximum value for x-axis (if None, use data range)
+        y_max_factor: Scaling coefficient for the maximum value for y-axis (beautifying plot with no cutting legend)
+        ylog: If True, use logarithmic scale for y-axis
+    """
+
+    colors = ['#1f77b4', '#ff7f0e']  # Blue for Pass HLT, Orange for Not Pass HLT
+    
+    # Adjust figure size based on variable type
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(12, 8))  # Create a new figure if ax is not provided
+    else:
+        if 'phi' in variable_name.lower() or 'eta' in variable_name.lower():
+            ax.figure.set_size_inches(8, 8)
+
+    # Get the relevant dataframe
+    df = dataframes[dataset_tag]
+    
+    # Set x axis limits and bins
+    is_eta = 'eta' in variable_name.lower()
+    is_phi = 'phi' in variable_name.lower()
+
+    if is_eta:
+        bins = np.linspace(-3.8, 3.8, nbins+1)
+    elif is_phi:
+        bins = np.linspace(-4.5, 4.5, nbins+1)
+    else:  # pt variable
+        if x_max is not None:
+            bins = np.linspace(0, x_max, nbins+1)
+        else:
+            xmax_val = df[column_name].max()
+            bins = np.linspace(0, xmax_val, nbins+1)
+
+    if ylog:
+        ax.yscale('log')
+
+    #=================================================
+    # Process low AD scores (dashed lines)
+    #=================================================
+    mask_low = (df['HLT_AD_scores'] >= range_AD_normal[0]) & (df['HLT_AD_scores'] <= range_AD_normal[1])
+    if remove_zero_entries:
+        if is_eta or is_phi:
+            epsilon = 1e-6
+            mask_low &= (np.abs(df[column_name]) > epsilon)
+        else:
+            mask_low &= (df[column_name] > 0)
+
+    # Pass HLT
+    data_low_pass = df[mask_low][df['passHLT'] == True][column_name]
+    weights_low_pass = df[mask_low][df['passHLT'] == True]['weights']
+
+    # Not Pass HLT
+    data_low_not_pass = df[mask_low][df['passHLT'] == False][column_name]
+    weights_low_not_pass = df[mask_low][df['passHLT'] == False]['weights']
+
+    # Compute histogram and errors using raw weights for Pass HLT
+    hist_low_pass, bin_edges = np.histogram(data_low_pass, bins=bins, weights=weights_low_pass)
+    hist_low_pass_err = np.sqrt(np.histogram(data_low_pass, bins=bins, weights=weights_low_pass**2)[0])
+
+    # Normalize the histogram and errors
+    norm_factor_low_pass = hist_low_pass.sum()
+    if norm_factor_low_pass > 0:
+        hist_low_pass /= norm_factor_low_pass
+        hist_low_pass_err /= norm_factor_low_pass
+
+    # Plot histogram with step style for Pass HLT
+    ax.hist(data_low_pass, bins=bins, weights=weights_low_pass / norm_factor_low_pass,
+            histtype='step', linestyle='--', color=colors[0], linewidth=1.5, label='Pass HLT')
+    
+    # Add error band for Pass HLT
+    ax.fill_between(bin_edges[:-1], hist_low_pass - hist_low_pass_err, hist_low_pass + hist_low_pass_err,
+                    alpha=0.15, color=colors[0], step='post')
+
+    # Compute histogram and errors using raw weights for Not Pass HLT
+    hist_low_not_pass, bin_edges = np.histogram(data_low_not_pass, bins=bins, weights=weights_low_not_pass)
+    hist_low_not_pass_err = np.sqrt(np.histogram(data_low_not_pass, bins=bins, weights=weights_low_not_pass**2)[0])
+
+    norm_factor_low_not_pass = hist_low_not_pass.sum()
+    if norm_factor_low_not_pass > 0:
+        hist_low_not_pass /= norm_factor_low_not_pass
+        hist_low_not_pass_err /= norm_factor_low_not_pass
+
+    # Plot histogram with step style for Not Pass HLT
+    ax.hist(data_low_not_pass, bins=bins, weights=weights_low_not_pass / norm_factor_low_not_pass,
+            histtype='step', linestyle='--', color=colors[1], linewidth=1.5, label='Not Pass HLT')
+    
+    # Add error band for Not Pass HLT
+    ax.fill_between(bin_edges[:-1], hist_low_not_pass - hist_low_not_pass_err, hist_low_not_pass + hist_low_not_pass_err,
+                    alpha=0.15, color=colors[1], step='post')
+
+    #=================================================
+    # Process high AD scores (solid lines)
+    #=================================================
+    mask_high = (df['HLT_AD_scores'] >= range_AD_anomalous[0]) & (df['HLT_AD_scores'] <= range_AD_anomalous[1])
+    if remove_zero_entries:           
+        if is_eta or is_phi:
+            epsilon = 1e-6
+            mask_high &= (np.abs(df[column_name]) > epsilon)
+        else:
+            mask_high &= (df[column_name] > 0)
+
+    # Pass HLT
+    data_high_pass = df[mask_high][df['passHLT'] == True][column_name]
+    weights_high_pass = df[mask_high][df['passHLT'] == True]['weights']
+
+    # Not Pass HLT
+    data_high_not_pass = df[mask_high][df['passHLT'] == False][column_name]
+    weights_high_not_pass = df[mask_high][df['passHLT'] == False]['weights']
+
+    # Compute histogram and errors using raw weights for Pass HLT
+    hist_high_pass, bin_edges = np.histogram(data_high_pass, bins=bins, weights=weights_high_pass)
+    hist_high_pass_err = np.sqrt(np.histogram(data_high_pass, bins=bins, weights=weights_high_pass**2)[0])
+
+    # Normalize the histogram and errors
+    norm_factor_high_pass = hist_high_pass.sum()
+    if norm_factor_high_pass > 0:
+        hist_high_pass /= norm_factor_high_pass
+        hist_high_pass_err /= norm_factor_high_pass
+
+    # Plot histogram with step style for Pass HLT
+    ax.hist(data_high_pass, bins=bins, weights=weights_high_pass / norm_factor_high_pass,
+            histtype='step', linestyle='-', color=colors[0], linewidth=1.5, label='Pass HLT (High AD scores)')
+    
+    # Add error band for Pass HLT
+    ax.fill_between(bin_edges[:-1], hist_high_pass - hist_high_pass_err, hist_high_pass + hist_high_pass_err,
+                    alpha=0.15, color=colors[0], step='post')
+
+    # Compute histogram and errors using raw weights for Not Pass HLT
+    hist_high_not_pass, bin_edges = np.histogram(data_high_not_pass, bins=bins, weights=weights_high_not_pass)
+    hist_high_not_pass_err = np.sqrt(np.histogram(data_high_not_pass, bins=bins, weights=weights_high_not_pass**2)[0])
+
+    norm_factor_high_not_pass = hist_high_not_pass.sum()
+    if norm_factor_high_not_pass > 0:
+        hist_high_not_pass /= norm_factor_high_not_pass
+        hist_high_not_pass_err /= norm_factor_high_not_pass
+
+    # Plot histogram with step style for Not Pass HLT
+    ax.hist(data_high_not_pass, bins=bins, weights=weights_high_not_pass / norm_factor_high_not_pass,
+            histtype='step', linestyle='-', color=colors[1], linewidth=1.5, label='Not Pass HLT (High AD scores)')
+    
+    # Add error band for Not Pass HLT
+    ax.fill_between(bin_edges[:-1], hist_high_not_pass - hist_high_not_pass_err, hist_high_not_pass + hist_high_not_pass_err,
+                    alpha=0.15, color=colors[1], step='post')
+
+    # Title plot & axes
+    object_name = variable_name.replace(" [GeV]", "")
+    ax.set_title(f'Distribution of {object_name} for low vs high AD scores', fontsize=22)
+    ax.set_xlabel(variable_name)
+    ax.set_ylabel('Normalized Events')
+    
+    if x_max is not None:
+        ax.set_xlim(0, x_max)
+    
+    # Create custom legend with lines
+    normal_lines = [Line2D([0], [0], color=colors[0], linestyle='--', lw=1.5), 
+                    Line2D([0], [0], color=colors[1], linestyle='--', lw=1.5)]
+    
+    anomalous_lines = [Line2D([0], [0], color=colors[0], linestyle='-', lw=1.5), 
+                       Line2D([0], [0], color=colors[1], linestyle='-', lw=1.5)]
+    
+    # Add first legend for low AD scores
+    first_legend = ax.legend(normal_lines, ['Pass HLT', 'Not Pass HLT'],
+                            title=f'Events with AD scores: {range_AD_normal[0]} - {range_AD_normal[1]}',
+                            loc='upper right',
+                            frameon=False,
+                            bbox_to_anchor=(0.95, 0.95))
+    ax.add_artist(first_legend)
+    
+    # Add second legend for high AD scores
+    ax.legend(anomalous_lines, ['Pass HLT', 'Not Pass HLT'],
+              title=f'Events with AD scores > {range_AD_anomalous[0]}',
+              loc='upper right',
+              frameon=False,
+              bbox_to_anchor=(0.95, 0.7))
+
+    ax.ticklabel_format(axis='y', style='sci', scilimits=(-2,3))
+    plt.tight_layout()
+    return fig, ax  # Return the figure and axis
+
+
+# CAN'T VISUALIZE PROPERLY - NOT USED
+def scatter_AD_vs_kinematic_var(dataframes, dataset_tags, column_name, variable_name, AD_score_limit=10, ax=None):
+    """
+    Create a scatter plot of AD scores against a specified kinematic variable.
+
+    Args:
+        dataframes: Dictionary of dataframes containing the data.
+        dataset_tags: List of strings identifying which datasets to plot.
+        column_name: Name of the kinematic variable to plot on the x-axis.
+        variable_name: Label for the x-axis.
+        AD_score_limit: Upper limit for y-axis (AD scores above this will be clipped).
+    """
+
+    if ax is None:
+       fig, ax = plt.subplots(figsize=(8, 8))  # Create a new figure if ax is not provided
+    else:
+       ax.set_aspect('equal')  # Ensure the aspect ratio is square if using an existing axis
+
+    # Define color palette
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
+              '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+
+    # Create lists to hold handles for the legends
+    dataset_handles = []
+
+    # Loop through each dataset and plot
+    for idx, tag in enumerate(dataset_tags):
+        df = dataframes[tag]
+        
+        # Create a mask for AD scores below the limit
+        mask = df['HLT_AD_scores'] <= AD_score_limit
+        
+        # Plot hollow markers for passHLT = False and filled for passHLT = True
+        scatter_hollow = ax.scatter(df.loc[mask, column_name], 
+                    df.loc[mask, 'HLT_AD_scores'], 
+                    edgecolor='grey' if df['passHLT'].any() else colors[idx],
+                    facecolor='none' if not df['passHLT'].any() else colors[idx],
+                    alpha=0.1,
+                    label=tag,
+                    s=25,  # Marker size
+                    linewidth=1.5)
+
+        # Overlay filled markers for passHLT = True
+        scatter_filled = ax.scatter(df.loc[mask & (df['passHLT'] == True), column_name], 
+                    df.loc[mask & (df['passHLT'] == True), 'HLT_AD_scores'], 
+                    color=colors[idx],
+                    alpha=0.1,
+                    s=25)  # Marker size
+                    #label='_nolegend_')  # Prevent duplicate legend entries
+        
+        # Collect handles for the dataset legend
+        dataset_handles.append(scatter_hollow)  # Add hollow marker handle
+        dataset_handles.append(scatter_filled)  # Add filled marker handle
+
+    # Set y-axis limit
+    ax.set_ylim(0, AD_score_limit)
+
+    # Set titles and labels
+    object_name = variable_name.replace(" [GeV]", "")
+    ax.set_title('Scatter Plot of AD Scores vs ' + object_name, fontsize=16, pad=20)
+    ax.set_xlabel(variable_name, fontsize=14, labelpad=20)
+    ax.set_ylabel('AD Scores', fontsize=14)
+
+    # Set aspect ratio to equal
+    #ax.set_aspect('equal', adjustable='box')  # Ensure the aspect ratio is square
+
+    # Create legends
+    dataset_legend = ax.legend(handles=dataset_handles, title='Datasets:', loc='upper right', bbox_to_anchor=(1.25, 1))  # Move further right
+
+    # Create HLT Trigger legend
+    hlt_legend_elements = [Line2D([0], [0], marker='o', color='w', label='Pass', 
+                                   markerfacecolor='grey', markersize=10),
+                           Line2D([0], [0], marker='o', color='w', label='Not pass', 
+                                   markerfacecolor='none', markeredgecolor='grey', markersize=10)]
+    
+    ax.legend(handles=hlt_legend_elements, title='HLT Trigger:', loc='upper right', bbox_to_anchor=(1.25, 0.5))
+
+    fig = ax.figure  # Get the figure from the axes
+    plt.tight_layout()  # Call tight_layout on the figure    ax.show()
+    return fig, ax  # Return the figure and axis
+
+
+
+
+#===============================
+#    C O N T O U R   P L O T 
+#===============================
+
+def contour_AD_kinematic_var(dataframes, dataset_tag, column_name, variable_name, x_max=None, AD_score_limit=100, filter=None, ax=None):
+    """
+    Simple contour plot of HLT AD scores vs a kinematic variable (column_name) for a specific dataset.
+
+    Args:
+        dataframes: Dictionary of datasets
+        dataset_tag: Dataset tag to select the relevant dataframe
+        column_name: Column in the dataframe representing a kinematic variable (x-axis)
+        variable_name: Name of the kinematic variable (used as x-axis label)
+        x_max: Optional maximum value for x-axis (limits the kinematic variable)
+        AD_score_limit: Optional limit for the AD score (limits the y-axis)
+        filter: Optional filter to apply to the dataframe (used for masking the data)
+        ax: Optional axis to plot on. If None, a new axis will be created.
+    """
+
+    # Get the relevant dataframe
+    df = dataframes[dataset_tag]
+
+    # Apply mask for AD score limit
+    mask = df['HLT_AD_scores'] <= AD_score_limit if AD_score_limit else np.ones(len(df), dtype=bool)
+
+    # Apply additional filter if provided
+    if filter is not None:
+        mask &= filter
+
+    # Extract the relevant data
+    x_data = df[column_name][mask]
+    y_data = df['HLT_AD_scores'][mask]
+    weights = df['weights'][mask]
+
+    # Apply x_max limit if provided
+    if x_max is not None:
+        mask_x = x_data <= x_max
+        x_data = x_data[mask_x]
+        y_data = y_data[mask_x]
+        weights = weights[mask_x]
+
+    # Create the plot
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 8))
+
+    # Set up a 2D histogram for contour plotting
+    counts, x_edges, y_edges = np.histogram2d(x_data, y_data, bins=100, weights=weights)
+
+    # Create the contour plot
+    X, Y = np.meshgrid(x_edges[:-1], y_edges[:-1])
+    contour = ax.contourf(X, Y, counts.T, cmap='viridis')
+
+    # Add color bar
+    plt.colorbar(contour, ax=ax)
+
+    # Set plot limits
+    ax.set_xlim(0, x_max if x_max else x_data.max())
+    ax.set_ylim(0, AD_score_limit if AD_score_limit else y_data.max())
+
+    # Set labels and title
+    ax.set_xlabel(variable_name, fontsize=14)
+    ax.set_ylabel('HLT AD Scores', fontsize=14)
+
+    # Calculate total weight and format it
+    total_weight = weights.sum()
+    if total_weight > 1e6:
+        total_weight_str = f"{total_weight / 1e6:.2f} million"
+    else:
+        total_weight_str = f"{total_weight:.2e}"
+
+    # Set the plot title
+    title = f'{dataset_tag} ({total_weight_str} weighted events)'
+    ax.set_title(title, fontsize=16)
+
+    plt.tight_layout()
+    plt.show()
