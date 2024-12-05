@@ -2,6 +2,9 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+import seaborn as sns
+from scipy.stats import gaussian_kde
+
 
 # Set plotting style at module level
 plt.rcParams.update({
@@ -1011,6 +1014,9 @@ def overlay_kin_variable_2_AD_ranges_errors(dataframes, dataset_tags, column_nam
     plt.tight_layout()  # Call tight_layout on the figure    ax.show()
     return fig, ax  # Return the figure and axis
 
+
+
+
 def overlay_kin_variable_2_AD_ranges_errors_HLT(dataframes, dataset_tag, column_name, variable_name, 
                                range_AD_normal, range_AD_anomalous, 
                                remove_zero_entries=False, 
@@ -1385,6 +1391,10 @@ def BUGGY_plot_box_AD_score_vs_jet_mult(dataframes, dataset_tags, score_limit=10
 
 
 
+
+
+
+
 def NOT_SURE_plot_box_AD_score_vs_jet_mult(dataframes, dataset_tags, score_limit=10000, ylog=False):
     """
     Create a box plot comparing AD score distributions for jet multiplicities across specified datasets
@@ -1579,3 +1589,560 @@ def plot_box_AD_score_vs_jet_mult(dataframes, dataset_tags, score_limit=10000, y
    plt.show()
 
 
+#=================================
+#  C O N T O U R    P L O T S
+#=================================
+
+
+
+# First try, half white buggy contour, no weights, shady normalization
+def plot_ad_score_contour(dataframes, 
+                          dataset_tag, 
+                          column_name, 
+                          variable_name, 
+                          x_max=None, 
+                          score_limit=10000,
+                          ylog_scale=False,
+                          ax=None):
+    """
+    Plot a contour plot of AD scores against a specified kinematic variable with filled colors and isolines.
+
+    Args:
+        dataframes: Dictionary of dataframes containing the data.
+        dataset_tag: String identifying which dataset to plot.
+        column_name: Name of the kinematic variable to plot on the x-axis (e.g., 'j0pt').
+        variable_name: Label for the x-axis.
+        score_limit: Upper limit for AD scores (scores above this will be clipped).
+        ax: Optional Matplotlib axis to plot on. If None, a new figure and axis will be created.
+        x_max: Optional maximum value for the x-axis.
+
+    Returns:
+        fig: The figure object.
+        ax: The axis object.
+    """
+    # Extract the relevant DataFrame
+    df = dataframes[dataset_tag]
+
+    # Filter the DataFrame to remove rows with NaN values in the specified columns
+    df = df[[column_name, 'HLT_AD_scores']].dropna()
+
+    # Clip AD scores to the specified limit
+    df['HLT_AD_scores'] = df['HLT_AD_scores'].clip(upper=score_limit)
+
+    # Check the range of the data
+    print(f"Data range for {column_name}: {df[column_name].min()} to {df[column_name].max()}")
+    print(f"Data range for AD Scores: {df['HLT_AD_scores'].min()} to {df['HLT_AD_scores'].max()}")
+
+    # Create a grid of values for the contour plot
+    x = df[column_name]
+    y = df['HLT_AD_scores']
+
+    # Create a 2D histogram to estimate the density of points
+    histogram, xedges, yedges = np.histogram2d(x, y, bins=[20, 20])
+
+    # Create the x and y coordinates for the contour plot
+    xcenters = 0.5 * (xedges[:-1] + xedges[1:])
+    ycenters = 0.5 * (yedges[:-1] + yedges[1:])
+    
+    # Create a meshgrid for contour plotting
+    X, Y = np.meshgrid(xcenters, ycenters)
+
+    # Normalize the histogram to create a density
+    Z = histogram.T  # Transpose to match the x and y axes
+    Z = Z / Z.max()  # Normalize to [0, 1]
+
+
+    # Set up the contour plot
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 8))  # Make a square plot
+    else:
+        fig = ax.figure  # Get the figure from the provided axis
+
+    # Draw filled contours
+    contourf = ax.contourf(X, Y, Z, levels=np.linspace(0, 1, 100), cmap='viridis')
+
+    # Define the levels for isolines
+    levels = [0.2, 0.4, 0.6, 0.8]
+
+    # Draw contour lines
+    contour_lines = ax.contour(X, Y, Z, levels=levels, colors='white', linewidths=1.5)
+
+    # Label the contour lines
+    clabels = ax.clabel(contour_lines, inline=True, fontsize=10, colors='white', fmt='%.1f', inline_spacing=2)
+    for label in clabels:
+        label.set_rotation(0)  # horizontal labels
+
+    # Set labels and title
+    object_name = variable_name.replace(" [GeV]", "")
+    ax.set_title(f'AD Scores vs. {object_name} ({dataset_tag})', fontsize=16, pad=20)
+    ax.set_xlabel(variable_name, fontsize=14, labelpad=20)
+    ax.set_ylabel('AD Score', fontsize=14)
+    if ylog_scale:  
+        plt.yscale('log')
+
+    # Set x-axis limit if x_max is provided
+    if x_max is not None:
+        ax.set_xlim(0, x_max)
+
+    # Set equal aspect ratio to make the contour plot square
+    #ax.set_aspect('equal', adjustable='box')
+
+    # Adjust layout to add more space around the plot
+    plt.tight_layout()  # Use default padding
+
+    # Return the figure and axis
+    return fig, ax
+
+
+
+# NOT USED, non normalized and illogical rendering (aka ugly plot)
+def NOT_USED_plot_ad_score_contour_isolines(dataframes, 
+                          dataset_tag, 
+                          column_name, 
+                          variable_name, 
+                          x_max=None, 
+                          score_limit=10000,
+                          ylog_scale=False,
+                          num_levels=10, 
+                          ax=None):
+    """
+    Plot a contour plot of AD scores against a specified kinematic variable with filled colors and isolines.
+
+    Args:
+        dataframes: Dictionary of dataframes containing the data.
+        dataset_tag: String identifying which dataset to plot.
+        column_name: Name of the kinematic variable to plot on the x-axis (e.g., 'j0pt').
+        variable_name: Label for the x-axis.
+        x_max: Optional maximum value for the x-axis.
+        score_limit: Upper limit for AD scores (scores above this will be clipped).
+        ylog_scale: Whether to use logarithmic scale for the y-axis.
+        num_levels: Number of contour levels for isolines.
+        ax: Optional Matplotlib axis to plot on. If None, a new figure and axis will be created.
+
+    Returns:
+        fig: The figure object.
+        ax: The axis object.
+    """
+
+    df = dataframes[dataset_tag]
+
+    # Filter and clean data
+    df = df[[column_name, 'HLT_AD_scores', 'weights']].dropna()
+    df['HLT_AD_scores'] = df['HLT_AD_scores'].clip(upper=score_limit)
+    
+    # Create a grid for the contour plot
+    x = df[column_name]
+    y = df['HLT_AD_scores']
+    weights = df['weights']
+    
+    # Bin data
+    x_bins = np.linspace(0, x_max if x_max else x.max(), 50)
+    y_bins = np.logspace(np.log10(1), np.log10(score_limit), 50) if ylog_scale else np.linspace(0, score_limit, 50)
+    H, xedges, yedges = np.histogram2d(x, y, bins=[x_bins, y_bins], weights=weights)
+    
+    # Normalize H by the total number of events (or use raw counts)
+    H = H.T  # Transpose for contour plotting
+
+    # Dynamically determine contour levels based on rounded event counts
+    max_count = np.ceil(H.max())
+    levels = np.linspace(0, max_count, num_levels)
+    
+    # Round levels to nearest "clean" numbers like 10, 20, 50
+    levels = np.unique([round(n, -1) for n in levels if n > 0])
+    
+    # Set up plot
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 8))
+    else:
+        fig = ax.figure
+
+    # Plot filled contours
+    contourf = ax.contourf(xedges[:-1], yedges[:-1], H, levels=num_levels, cmap='viridis', extend='both')
+
+    # Plot isolines based on rounded levels
+    contour_lines = ax.contour(xedges[:-1], yedges[:-1], H, levels=levels, colors='white', linewidths=1.5)
+    ax.clabel(contour_lines, inline=True, fmt='%1.0f', fontsize=8, colors='white')
+
+
+    # Set labels and title
+    object_name = variable_name.replace(" [GeV]", "")
+    ax.set_title(f'AD Scores vs. {object_name} ({dataset_tag})', fontsize=16, pad=20)
+    ax.set_xlabel(variable_name, fontsize=14, labelpad=20)
+    ax.set_ylabel('AD Score', fontsize=14)
+    if ylog_scale:  
+        plt.yscale('log')
+    if x_max:
+        ax.set_xlim(0, x_max)
+    
+    plt.tight_layout()
+    return fig, ax
+
+
+
+# Simple contour, normalized  TESTING... 
+def plot_ad_score_contour_isolines(dataframes, 
+                                   dataset_tag, 
+                                   column_name, 
+                                   variable_name, 
+                                   x_max=None, 
+                                   score_limit=10000,
+                                   ylog_scale=False,
+                                   ax=None,
+                                   contour_step=0.01,  # Step size for rounding contour levels
+                                   grid_resolution=50):  # Lower grid resolution for faster plotting
+    """
+    Simple contour plot of AD scores against a specified kinematic variable using a 2D histogram.
+
+    Args:
+        dataframes: Dictionary of dataframes containing the data.
+        dataset_tag: String identifying which dataset to plot.
+        column_name: Name of the kinematic variable to plot on the x-axis.
+        variable_name: Label for the x-axis.
+        x_max: Optional maximum value for the x-axis.
+        score_limit: Upper limit for AD scores (scores above this will be clipped).
+        ylog_scale: Boolean to set y-axis to logarithmic scale.
+        ax: Optional matplotlib axis to draw on.
+        contour_step: The step size for contour levels (e.g., 0.1, 0.2, etc.).
+        downsample_frac: Fraction of data to use for plotting (e.g., 0.1 for 10% of the data).
+        grid_resolution: Resolution for the grid, smaller means faster.
+
+    Returns:
+        fig, ax: Matplotlib figure and axis.
+    """
+
+    # Extract and filter the dataset
+    df = dataframes[dataset_tag]
+    df = df[[column_name, 'HLT_AD_scores', 'weights']].dropna()
+
+    # Apply filters
+    mask = (df[column_name] <= x_max) & (df['HLT_AD_scores'] <= score_limit)
+    filtered_df = df[mask]
+
+    x = filtered_df[column_name].values
+    y = filtered_df['HLT_AD_scores'].values
+    weights = filtered_df['weights'].values
+
+    # Normalize weights
+    normalized_weights = weights / weights.sum()
+
+    # Define grid boundaries
+    xmin, xmax = 0, x_max if x_max else x.max()
+    ymin, ymax = y.min(), y.max()
+
+    # Generate a lower resolution grid over the x and y ranges
+    xedges = np.linspace(xmin, xmax, grid_resolution)
+    yedges = np.linspace(ymin, ymax, grid_resolution)
+
+    # Compute the 2D histogram
+    hist, xedges, yedges = np.histogram2d(x, y, bins=[xedges, yedges], weights=normalized_weights)
+
+    # Create a grid for plotting contours
+    X, Y = np.meshgrid(xedges[:-1], yedges[:-1])
+
+    # Set up the contour plot
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 8))
+    else:
+        fig = ax.figure
+
+    # Define the levels for isolines, rounded to multiples of contour_step
+    min_val, max_val = hist.min(), hist.max()
+    levels = np.arange(min_val, max_val, contour_step)
+    levels = np.round(levels, 2)  # Ensure levels are rounded to two two decimal places
+
+    print(f"Check integral of his = {np.sum(hist)}")
+    print(f"min and max are {min_val} and {max_val}")
+    print(levels)
+
+
+    # Plot the filled contours
+    contour_filled = ax.contourf(X, Y, hist, levels=50, cmap='viridis')
+
+    """
+    # Draw contour lines (with levels displayed on the lines)
+    contour_lines = ax.contour(X, Y, hist, levels=levels, colors='white', linewidths=1.5)
+
+    # Label the contours with rounded numbers
+    clabels = ax.clabel(contour_lines, inline=True, fontsize=10, fmt='%0.2f')
+    for label in clabels:
+        label.set_rotation(0)
+    """
+
+    # Set axis labels and title
+    object_name = variable_name.replace(" [GeV]", "")
+    ax.set_title(f'AD Scores vs. {object_name} ({dataset_tag})', fontsize=16, pad=20)
+    ax.set_xlabel(variable_name, fontsize=14, labelpad=20)
+    ax.set_ylabel('AD Score', fontsize=14)
+    
+    # Set y-axis to log scale if needed
+    if ylog_scale:
+        ax.set_yscale('log')
+
+    # Limit x-axis if x_max is provided
+    if x_max is not None:
+        ax.set_xlim(0, x_max)
+
+    # Adjust layout
+    plt.tight_layout()
+
+    return fig, ax
+
+
+
+
+
+
+# To test : not working, fully white (because of levels confusion between the fill and the lines)
+def plot_ad_score_contour_isolines_KDE(dataframes, 
+                                   dataset_tag, 
+                                   column_name, 
+                                   variable_name, 
+                                   x_max=None, 
+                                   score_limit=10000,
+                                   ylog_scale=False,
+                                   contour_step=0.1,
+                                   ax=None):
+    """
+    Simple contour plot of AD scores against a specified kinematic variable.
+
+    Args:
+        dataframes: Dictionary of dataframes containing the data.
+        dataset_tag: String identifying which dataset to plot.
+        column_name: Name of the kinematic variable to plot on the x-axis.
+        variable_name: Label for the x-axis.
+        x_max: Optional maximum value for the x-axis.
+        score_limit: Upper limit for AD scores (scores above this will be clipped).
+        ylog_scale: Boolean to set y-axis to logarithmic scale.
+        num_levels: Number of contour levels to display.
+        ax: Optional matplotlib axis to draw on.
+
+    Returns:
+        fig, ax: Matplotlib figure and axis.
+    """
+
+    # Extract and filter the dataset
+    df = dataframes[dataset_tag]
+    df = df[[column_name, 'HLT_AD_scores', 'weights']].dropna()
+
+    # Apply filters
+    mask = (df[column_name] <= x_max) & (df['HLT_AD_scores'] <= score_limit)
+    filtered_df = df[mask]
+
+    x = filtered_df[column_name].values
+    y = filtered_df['HLT_AD_scores'].values
+    weights = filtered_df['weights'].values
+
+    # Normalize weights
+    normalized_weights = weights / weights.sum()
+
+    # Create KDE for the filtered data
+    kde = gaussian_kde(np.vstack([x, y]), weights=normalized_weights)
+    xmin, xmax = 0, x_max if x_max else x.max()
+    ymin, ymax = y.min(), y.max()
+
+    # Generate a grid over the x and y ranges
+    X, Y = np.mgrid[xmin:xmax:100j, ymin:ymax:100j]
+    Z = kde(np.vstack([X.ravel(), Y.ravel()])).reshape(X.shape)
+
+    # Set up the contour plot
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 8))
+    else:
+        fig = ax.figure
+
+    # Define the levels for isolines with step size
+    levels = np.arange(Z.min(), Z.max(), contour_step)
+
+    contour_lines = ax.contour(X, Y, Z, levels=levels, cmap='viridis')
+    
+    # Label the contours
+    clabels = ax.clabel(contour_lines, inline=True, fontsize=10, fmt='%.2f')
+    for label in clabels:
+        label.set_rotation(0)
+
+    # Set axis labels and title
+    object_name = variable_name.replace(" [GeV]", "")
+    ax.set_title(f'AD Scores vs. {object_name} ({dataset_tag})', fontsize=16, pad=20)
+    ax.set_xlabel(variable_name, fontsize=14, labelpad=20)
+    ax.set_ylabel('AD Score', fontsize=14)
+    
+    # Set y-axis to log scale if needed
+    if ylog_scale:
+        ax.set_yscale('log')
+
+    # Limit x-axis if x_max is provided
+    if x_max is not None:
+        ax.set_xlim(0, x_max)
+
+    # Adjust layout
+    plt.tight_layout()
+
+    return fig, ax
+
+
+
+
+# Way too slow | first try with seaborn
+def SUPERSLOW_SNS_ad_score_jointplot(dataframes, dataset_tag, column_name, variable_name, score_limit=10000, x_max=None):
+    """
+    Quick visualization of AD scores against a specified kinematic variable using Seaborn's jointplot.
+
+    Args:
+        dataframes: Dictionary of dataframes containing the data.
+        dataset_tag: String identifying which dataset to plot.
+        column_name: Name of the kinematic variable to plot on the x-axis (e.g., 'j0pt').
+        variable_name: Label for the x-axis.
+        score_limit: Upper limit for AD scores (scores above this will be clipped).
+        x_max: Optional maximum value for the x-axis.
+
+    Returns:
+        g: Seaborn JointGrid object for further customization.
+    """
+    sns.reset_defaults()
+
+    # Extract and prepare data
+    df = dataframes[dataset_tag]
+    df = df[[column_name, 'HLT_AD_scores', 'weights']].dropna()
+    df['HLT_AD_scores'] = df['HLT_AD_scores'].clip(upper=score_limit)
+
+    # Filter based on x_max if provided
+    if x_max is not None:
+        df = df[df[column_name] <= x_max]
+
+    # Downsample to speed up KDE
+    df_sampled = df.sample(frac=0.1, random_state=42)  # Adjust the fraction as needed
+
+    # Plot
+    g = sns.jointplot(
+        data=df,
+        x=column_name,
+        y='HLT_AD_scores',
+        kind='kde',  # KDE for smooth density estimate
+        fill=True,   # Fills the KDE contours with color
+        cmap='viridis',
+        levels=20,  # Reduced levels for faster plotting
+        thresh=0.05,
+    )
+
+    # Set axis labels and title
+    g.set_axis_labels(variable_name, 'AD Score', fontsize=12)
+    g.fig.suptitle(f'AD Scores vs. {variable_name} ({dataset_tag})', y=1.02, fontsize=14)
+
+    return g
+
+
+# Contour with colorbar / not as precise a seaborn 
+# Fully filled so not knowing zeroed/no-data areas (in white in seaborn, better)
+# ISSUE: "The gaussian_kde function assumes that all data points have equal weight, 
+# which means it doesn't account for weighted events when estimating the probability density function."
+
+from scipy.stats import gaussian_kde
+
+def ad_score_vs_kin_var_contour(dataframes, dataset_tag, column_name, variable_name, score_limit=10000, 
+                                  x_max=None, use_weights=True, ylog_scale=False):
+    """
+    Visualization of AD scores against a specified kinematic variable without seaborn.
+
+    Args:
+        dataframes: Dictionary of dataframes containing the data.
+        dataset_tag: String identifying which dataset to plot.
+        column_name: Name of the kinematic variable to plot on the x-axis.
+        variable_name: Label for the x-axis.
+        score_limit: Upper limit for AD scores (scores above this will be clipped).
+        x_max: Optional maximum value for the x-axis.
+        use_weights: Boolean to determine if weights should be used.
+        ylog_scale: Boolean to set y-axis to logarithmic scale.
+    """
+    df = dataframes[dataset_tag]
+
+    # Apply filters
+    mask = (df[column_name] <= x_max) & (df['HLT_AD_scores'] <= score_limit)
+    filtered_df = df[mask]
+
+    x = filtered_df[column_name].values
+    y = filtered_df['HLT_AD_scores'].values
+    weights = filtered_df['weights'].values if use_weights else np.ones_like(y)
+
+    # Normalize weights
+    weights /= weights.sum()
+
+    # Create scatter plot
+    plt.figure(figsize=(10, 8))
+    plt.scatter(x, y, c='blue', s=10 * weights, alpha=0.6, label='Data points')
+
+    # KDE calculation
+    xy = np.vstack([x, y])
+    kde = gaussian_kde(xy, weights=weights)
+    x_min, x_max_data = min(x), x_max if x_max else max(x)
+    y_min, y_max_data = min(y), max(y)
+    
+    # Create grid
+    xx, yy = np.mgrid[x_min:x_max_data:100j, y_min:y_max_data:100j]
+    zz = kde(np.vstack([xx.ravel(), yy.ravel()])).reshape(xx.shape)
+
+    # Contour plot
+    plt.contourf(xx, yy, zz, levels=15, cmap='viridis', alpha=0.7)
+
+    # Axis scaling
+    plt.yscale('log' if ylog_scale else 'linear')
+    if x_max:
+        plt.xlim(0, x_max)
+
+    # Labels and title
+    plt.xlabel(variable_name, fontsize=14)
+    plt.ylabel('AD Score', fontsize=14)
+    plt.title(f'AD Scores vs. {variable_name.replace(" [GeV]", "")} ({dataset_tag})', fontsize=16)
+
+    plt.colorbar(label='Density')
+    plt.show()
+
+
+# Seaborn to the rescue
+# Normally weight normalization working 
+def sns_ad_score_jointplot(dataframes, dataset_tag, column_name, variable_name, score_limit=10000, x_max=None):
+    """
+    Quick visualization of AD scores against a specified kinematic variable using Seaborn's jointplot.
+
+    Args:
+        dataframes: Dictionary of dataframes containing the data.
+        dataset_tag: String identifying which dataset to plot.
+        column_name: Name of the kinematic variable to plot on the x-axis (e.g., 'j0pt').
+        variable_name: Label for the x-axis.
+        score_limit: Upper limit for AD scores (scores above this will be clipped).
+        x_max: Optional maximum value for the x-axis.
+
+    Returns:
+        g: Seaborn JointGrid object for further customization.
+    """
+    sns.reset_defaults()
+
+    # Extract and prepare data
+    df = dataframes[dataset_tag]
+    df = df[[column_name, 'HLT_AD_scores', 'weights']].dropna()
+    df['HLT_AD_scores'] = df['HLT_AD_scores'].clip(upper=score_limit)
+
+    # Filter based on x_max if provided
+    if x_max is not None:
+        df = df[df[column_name] <= x_max]
+
+    # Downsample to speed up KDE
+    df_sampled = df.sample(frac=0.1, random_state=42)  # Adjust the fraction as needed
+
+    # Plot
+    g = sns.jointplot(
+        data=df,
+        x=column_name,
+        y='HLT_AD_scores',
+        kind='kde',  # KDE for smooth density estimate
+        fill=True,   # Fills the KDE contours with color
+        cmap='viridis',
+        levels=20,  # Reduced levels for faster plotting
+        thresh=0.05,
+    )
+
+    # Set axis labels and title
+    g.set_axis_labels(variable_name, 'AD Score', fontsize=12)
+    object_name = variable_name.replace(" [GeV]", "")
+    g.fig.suptitle(f'AD Scores vs. {object_name} ({dataset_tag})', y=1.02, fontsize=14)
+
+    return g
