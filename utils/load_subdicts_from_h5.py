@@ -1,3 +1,7 @@
+# ============================================================
+# DEPRECATED: This function is deprecated because the data format has changed.
+# ============================================================
+
 import numpy as np
 import os
 import h5py

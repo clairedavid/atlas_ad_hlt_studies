@@ -1,3 +1,7 @@
+# ============================================================
+# STATUS: All macros for 2024 dataset.
+# ============================================================
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -1789,7 +1793,9 @@ def plot_ad_score_contour_isolines(dataframes,
                                    ylog_scale=False,
                                    ax=None,
                                    contour_step=0.01,  # Step size for rounding contour levels
-                                   grid_resolution=50):  # Lower grid resolution for faster plotting
+                                   grid_resolution=50,
+                                   number_levels=10,
+                                   debug=False):  # Lower grid resolution for faster plotting
     """
     Simple contour plot of AD scores against a specified kinematic variable using a 2D histogram.
 
@@ -1822,19 +1828,19 @@ def plot_ad_score_contour_isolines(dataframes,
     y = filtered_df['HLT_AD_scores'].values
     weights = filtered_df['weights'].values
 
-    # Normalize weights
-    normalized_weights = weights / weights.sum()
-
     # Define grid boundaries
     xmin, xmax = 0, x_max if x_max else x.max()
     ymin, ymax = y.min(), y.max()
 
     # Generate a lower resolution grid over the x and y ranges
-    xedges = np.linspace(xmin, xmax, grid_resolution)
-    yedges = np.linspace(ymin, ymax, grid_resolution)
+    xedges = np.linspace(xmin, xmax, grid_resolution + 1)
+    yedges = np.linspace(ymin, ymax, grid_resolution + 1)
 
     # Compute the 2D histogram
-    hist, xedges, yedges = np.histogram2d(x, y, bins=[xedges, yedges], weights=normalized_weights)
+    hist, xedges, yedges = np.histogram2d(x, y, bins=[xedges, yedges], weights=weights)
+
+    hist /= hist.sum()  # normalize
+    hist = hist.T       # Transpose for meshgrid use
 
     # Create a grid for plotting contours
     X, Y = np.meshgrid(xedges[:-1], yedges[:-1])
@@ -1845,20 +1851,14 @@ def plot_ad_score_contour_isolines(dataframes,
     else:
         fig = ax.figure
 
-    # Define the levels for isolines, rounded to multiples of contour_step
+    # Plot the filled contours
     min_val, max_val = hist.min(), hist.max()
+    contour_filled = ax.contourf(X, Y, hist, levels=np.linspace(min_val, max_val, number_levels), cmap='viridis')
+
+    # Define the levels for isolines, rounded to multiples of contour_step
     levels = np.arange(min_val, max_val, contour_step)
     levels = np.round(levels, 2)  # Ensure levels are rounded to two two decimal places
 
-    print(f"Check integral of his = {np.sum(hist)}")
-    print(f"min and max are {min_val} and {max_val}")
-    print(levels)
-
-
-    # Plot the filled contours
-    contour_filled = ax.contourf(X, Y, hist, levels=50, cmap='viridis')
-
-    """
     # Draw contour lines (with levels displayed on the lines)
     contour_lines = ax.contour(X, Y, hist, levels=levels, colors='white', linewidths=1.5)
 
@@ -1866,8 +1866,7 @@ def plot_ad_score_contour_isolines(dataframes,
     clabels = ax.clabel(contour_lines, inline=True, fontsize=10, fmt='%0.2f')
     for label in clabels:
         label.set_rotation(0)
-    """
-
+    
     # Set axis labels and title
     object_name = variable_name.replace(" [GeV]", "")
     ax.set_title(f'AD Scores vs. {object_name} ({dataset_tag})', fontsize=16, pad=20)
@@ -1884,6 +1883,20 @@ def plot_ad_score_contour_isolines(dataframes,
 
     # Adjust layout
     plt.tight_layout()
+
+    if debug:
+        # Raw data stats
+        print("Raw Data Statistics:")
+        print(f"X Mean: {x.mean():.2f}, Std: {x.std():.2f}, Min: {x.min():.2f}, Max: {x.max():.2f}")
+        print(f"Y Mean: {y.mean():.2f}, Std: {y.std():.2f}, Min: {y.min():.2f}, Max: {y.max():.2f}")
+        print(f"Weights Sum: {weights.sum():.2f}, Mean: {weights.mean():.2f}\n")
+        print(f"Integral of hist = {np.sum(hist)}")
+        print(f"Histogram min and max values: {min_val} and {max_val}")
+        print(f"Levels for contour lines: {levels}")
+
+
+
+
 
     return fig, ax
 
@@ -2067,7 +2080,7 @@ def ad_score_vs_kin_var_contour(dataframes, dataset_tag, column_name, variable_n
     weights /= weights.sum()
 
     # Create scatter plot
-    plt.figure(figsize=(10, 8))
+    plt.figure(figsize=(8, 6))
     plt.scatter(x, y, c='blue', s=10 * weights, alpha=0.6, label='Data points')
 
     # KDE calculation
@@ -2091,7 +2104,8 @@ def ad_score_vs_kin_var_contour(dataframes, dataset_tag, column_name, variable_n
     # Labels and title
     plt.xlabel(variable_name, fontsize=14)
     plt.ylabel('AD Score', fontsize=14)
-    plt.title(f'AD Scores vs. {variable_name.replace(" [GeV]", "")} ({dataset_tag})', fontsize=16)
+    object_name = variable_name.replace(" [GeV]", "")
+    plt.title(f'AD Scores vs. {object_name} ({dataset_tag})', fontsize=16)
 
     plt.colorbar(label='Density')
     plt.show()
@@ -2099,6 +2113,7 @@ def ad_score_vs_kin_var_contour(dataframes, dataset_tag, column_name, variable_n
 
 # Seaborn to the rescue
 # Normally weight normalization working 
+# The clipping distords the plot for clipped AD scores. 
 def sns_ad_score_jointplot(dataframes, dataset_tag, column_name, variable_name, score_limit=10000, x_max=None):
     """
     Quick visualization of AD scores against a specified kinematic variable using Seaborn's jointplot.
