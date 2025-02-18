@@ -93,24 +93,6 @@ def plot_AD_scores_violin(dataframes, dataset_tags=None, score_limit=1000, ylog=
     plt.tight_layout()
     
     plt.show()
-
-    # Create statistics DataFrame 
-    stats_dict = {}
-    for scores, dataset_tag in zip(original_scores, labels):
-        stats_dict[dataset_tag] = {
-            'Mean': np.mean(scores),
-            'Median': np.median(scores),
-            'Std Dev': np.std(scores),
-            'Min': np.min(scores),
-            'Max': np.max(scores),
-            f'% above {score_limit}': (dataframes[dataset_tag]['HLT_AD_scores'] > score_limit).mean() * 100  # Need original unclipped data for this
-        }
-    
-    # Convert to DataFrame and format
-    stats_df = pd.DataFrame(stats_dict).round(2)
-    
-    print("\nAD Score Statistics:")
-    print(stats_df.to_string())
     
     return fig, ax  # Return the figure and axis objects
     """
