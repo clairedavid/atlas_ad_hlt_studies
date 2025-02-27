@@ -44,9 +44,75 @@ def inspect_h5_keys(data_dir, selected_tag=None): # list all files if selected_t
                 print(f"Error reading file {file_path}: {str(e)}")
 
 
+def load_dataframes_from_h5_2024(data_dir):
+
+    """
+    Loads from HDF5 files in a directory and put it into a dataframe.
+    VERSION FOR 2024 SAMPLES
+    
+    Args:
+        data_dir (str): The directory where the HDF5 files are stored.
+    
+    Returns:
+        dataframes (pd.DataFrame): A dictionary of dataframes for each dataset (EB, signals, etc.).
+    """
+
+    # Define column names for HLT_data
+    columns = ['j0pt', 'j0eta', 'j0phi', 'j1pt', 'j1eta', 'j1phi', 
+               'j2pt', 'j2eta', 'j2phi', 'j3pt', 'j3eta', 'j3phi',
+               'j4pt', 'j4eta', 'j4phi', 'j5pt', 'j5eta', 'j5phi',
+               'e0pt', 'e0eta', 'e0phi', 'e1pt', 'e1eta', 'e1phi',
+               'e2pt', 'e2eta', 'e2phi', 'mu0pt', 'mu0eta', 'mu0phi',
+               'mu1pt', 'mu1eta', 'mu1phi', 'mu2pt', 'mu2eta', 'mu2phi',
+               'ph0pt', 'ph0eta', 'ph0phi', 'ph1pt', 'ph1eta', 'ph1phi',
+               'ph2pt', 'ph2eta', 'ph2phi', 'METpt', 'METeta', 'METphi']
+
+
+    dataframes = {}
+    
+    for filename in os.listdir(data_dir):
+        if filename.endswith(".h5"):
+            dataset_tag = os.path.splitext(filename)[0]
+
+            # Skip EB_val and EB_train
+            if dataset_tag in ['EB_val', 'EB_train']:
+                continue
+            
+            file_path = os.path.join(data_dir, filename)
+            with h5py.File(file_path, 'r') as f:
+                # Create main DataFrame with HLT_data
+                df = pd.DataFrame(f['HLT_data'][:], columns=columns)
+
+                # Add scores, weights, region labels, and pileups
+                df['HLT_AD_scores'] = f['HLT_AD_scores'][:]
+                df['weights'] = f['weights'][:]
+                df['passHLT'] = f['passHLT'][:]
+                df['passL1'] = f['passL1'][:]
+                # df['pileups'] = f['pileups'][:]
+                # df['region_labels'] = f['region_labels'][:]
+
+                # Create DataFrame for latent representations
+                latent_reps = pd.DataFrame(
+                    f['HLT_latent_reps'][:], 
+                    columns=['LS1', 'LS2', 'LS3', 'LS4']
+                )
+                
+                # Combine with main DataFrame
+                df = pd.concat([df, latent_reps], axis=1)
+                
+                dataframes[dataset_tag] = df
+            print(f"Loaded {dataset_tag} from {file_path}")
+    
+    return dataframes
+
+
+
+
+
 def load_dataframes_from_h5(data_dir):
     """
     Loads from HDF5 files in a directory and put it into a dataframe.
+    VERSION FOR 2025 SAMPLES
     
     Args:
         data_dir (str): The directory where the HDF5 files are stored.
